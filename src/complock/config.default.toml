@@ -1,0 +1,64 @@
+# comp-lock configuration.
+#
+# Written by `complock init`. Changes are picked up the next time a lock
+# starts; a running lock keeps the settings it began with.
+
+# Seconds between sweeps. A shorter interval closes a blocked application
+# sooner and repairs hosts-file edits sooner, at the cost of waking more often.
+poll_interval = 2.0
+
+# When false, `complock stop` refuses to end a lock before its deadline and
+# --force is rejected. The point is to make quitting inconvenient rather than
+# impossible: anyone with administrator rights can still unpick it by hand.
+allow_early_stop = true
+
+# Clear the Windows resolver cache when a lock starts and ends, so a name
+# looked up beforehand does not keep resolving from cache.
+flush_dns = true
+
+# Turn DNS-over-HTTPS off by group policy in Chrome, Edge, Brave and Firefox
+# for the duration of the lock. Without this a browser resolves names itself
+# and never consults the hosts file. Policy is read at browser startup, so a
+# browser that is already open has to be restarted for it to take effect.
+disable_browser_doh = true
+
+# Profiles decide what a lock covers.
+#
+#   domains    hostnames, or @name to pull in a bundled list. The lists are
+#              social, video, news, games and shopping.
+#   processes  executable names, matched on the file name without regard to
+#              case. A name with no extension is read as .exe.
+#
+# Browsers are deliberately absent from every processes list: closing one takes
+# the rest of your tabs with it, and the hosts file already covers the sites.
+
+[profiles.social]
+domains = ["@social"]
+processes = ["Instagram", "TikTok", "Snapchat", "Discord", "Telegram", "WhatsApp"]
+
+[profiles.media]
+domains = ["@social", "@video"]
+processes = [
+    "Instagram",
+    "TikTok",
+    "Snapchat",
+    "Discord",
+    "Telegram",
+    "WhatsApp",
+    "Spotify",
+]
+
+[profiles.deep]
+domains = ["@social", "@video", "@news", "@games", "@shopping"]
+processes = [
+    "Instagram",
+    "TikTok",
+    "Snapchat",
+    "Discord",
+    "Telegram",
+    "WhatsApp",
+    "Spotify",
+    "Steam",
+    "EpicGamesLauncher",
+    "RobloxPlayerBeta",
+]

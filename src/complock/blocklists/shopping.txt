@@ -1,0 +1,17 @@
+# Shopping and marketplaces.
+
+amazon.com
+media-amazon.com
+ssl-images-amazon.com
+ebay.com
+ebayimg.com
+etsy.com
+aliexpress.com
+temu.com
+shein.com
+wish.com
+walmart.com
+target.com
+bestbuy.com
+newegg.com
+stockx.com

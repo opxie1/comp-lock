@@ -1,0 +1,22 @@
+# News, aggregators, and the sites that read like news but are not.
+
+news.ycombinator.com
+cnn.com
+foxnews.com
+nytimes.com
+washingtonpost.com
+bbc.com
+bbc.co.uk
+theguardian.com
+dailymail.co.uk
+nypost.com
+cnbc.com
+bloomberg.com
+buzzfeed.com
+vice.com
+huffpost.com
+msn.com
+yahoo.com
+substack.com
+medium.com
+quora.com

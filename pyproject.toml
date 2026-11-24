@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comp-lock"
+version = "1.0.0"
+description = "Timed site and application lock for Windows."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Ethan Xie" }]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.scripts]
+complock = "complock.cli:main"
+
+[project.urls]
+Source = "https://github.com/opxie1/comp-lock"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+complock = ["blocklists/*.txt", "config.default.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error"]

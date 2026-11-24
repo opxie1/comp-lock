@@ -1,0 +1,37 @@
+# Video and streaming.
+
+# YouTube. googlevideo.com carries the actual streams, so leaving it out lets
+# a cached page keep playing.
+youtube.com
+youtu.be
+ytimg.com
+youtube-nocookie.com
+googlevideo.com
+yt3.ggpht.com
+
+# Twitch
+twitch.tv
+ttvnw.net
+jtvnw.net
+twitchcdn.net
+
+# Subscription services
+netflix.com
+nflxvideo.net
+nflximg.net
+hulu.com
+disneyplus.com
+dssott.com
+primevideo.com
+max.com
+hbomax.com
+peacocktv.com
+paramountplus.com
+
+# Other
+vimeo.com
+dailymotion.com
+kick.com
+rumble.com
+bilibili.com
+crunchyroll.com

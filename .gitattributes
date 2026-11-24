@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# PowerShell is happier with CRLF, and these are only ever run on Windows.
+*.ps1 text eol=crlf

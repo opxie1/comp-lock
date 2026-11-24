@@ -1,0 +1,66 @@
+# Social networks and messaging.
+#
+# One hostname per line; blank lines and # comments are ignored. Every entry
+# also gets a www. alias when the list is resolved, so there is no need to
+# write both forms.
+
+# Instagram
+instagram.com
+cdninstagram.com
+igcdn.com
+igsonar.com
+
+# TikTok
+tiktok.com
+tiktokcdn.com
+tiktokcdn-us.com
+tiktokv.com
+ibytedtos.com
+byteoversea.com
+musical.ly
+
+# Snapchat
+snapchat.com
+sc-cdn.net
+snap.com
+snapkit.com
+feelinsonice.com
+
+# Facebook and Messenger
+facebook.com
+fbcdn.net
+fbsbx.com
+fb.com
+messenger.com
+
+# X
+twitter.com
+x.com
+twimg.com
+t.co
+
+# Reddit
+reddit.com
+redd.it
+redditmedia.com
+redditstatic.com
+
+# Threads
+threads.net
+threads.com
+
+# Everything else
+tumblr.com
+pinterest.com
+pinimg.com
+linkedin.com
+licdn.com
+discord.com
+discordapp.com
+discord.gg
+bsky.app
+mastodon.social
+vk.com
+weibo.com
+9gag.com
+imgur.com

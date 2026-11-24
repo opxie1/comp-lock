@@ -1,0 +1,21 @@
+# Game stores, launchers, and browser games.
+
+steampowered.com
+steamcommunity.com
+steamstatic.com
+epicgames.com
+roblox.com
+rbxcdn.com
+battle.net
+blizzard.com
+riotgames.com
+leagueoflegends.com
+ea.com
+origin.com
+gog.com
+itch.io
+chess.com
+lichess.org
+coolmathgames.com
+miniclip.com
+poki.com
