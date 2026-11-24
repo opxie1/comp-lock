@@ -171,13 +171,28 @@ if (-not (Test-Admin)) {
     if ($NoTask) { $arguments += '-NoTask' }
     if ($Force) { $arguments += '-Force' }
 
+    $declined = $false
     try {
         $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs `
             -ArgumentList $arguments -PassThru -Wait
     } catch {
-        throw 'Administrator rights were refused. Re-run this in a terminal started with "Run as administrator".'
+        $declined = $true
     }
-    exit $elevated.ExitCode
+
+    if ($declined) {
+        Write-Host ''
+        Write-Host 'Administrator rights were refused, so nothing was installed.' -ForegroundColor Red
+        Write-Host 'Start a terminal with "Run as administrator" and paste the same line again.'
+        Write-Host ''
+    } elseif ($elevated.ExitCode -ne 0) {
+        Write-Host ''
+        Write-Host 'The install did not finish. The window it opened says why.' -ForegroundColor Red
+        Write-Host ''
+    }
+
+    # Deliberately not `exit`: piped through iex that would close the terminal
+    # the line was pasted into.
+    return
 }
 
 try {
@@ -301,10 +316,14 @@ try {
 }
 
 if ($Relaunched) {
-    # This window was opened by the elevation prompt, so it would otherwise
-    # close before the result could be read.
+    # A window of its own, opened by the elevation prompt. It has to hold open
+    # long enough to be read, and its exit code is what the unelevated process
+    # reports on.
     Write-Host 'Press Enter to close this window.'
     try { Read-Host | Out-Null } catch { }
+    exit $exitCode
 }
 
-exit $exitCode
+# Reached only when the script was already elevated, so there is no window to
+# report back to and no exit code worth closing a terminal over.
+if ($exitCode -ne 0) { throw 'comp-lock was not installed.' }

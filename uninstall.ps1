@@ -85,13 +85,28 @@ if (-not (Test-Admin)) {
     if ($Purge) { $arguments += '-Purge' }
     if ($Force) { $arguments += '-Force' }
 
+    $declined = $false
     try {
         $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs `
             -ArgumentList $arguments -PassThru -Wait
     } catch {
-        throw 'Administrator rights were refused. Re-run this in a terminal started with "Run as administrator".'
+        $declined = $true
     }
-    exit $elevated.ExitCode
+
+    if ($declined) {
+        Write-Host ''
+        Write-Host 'Administrator rights were refused, so nothing was removed.' -ForegroundColor Red
+        Write-Host 'Start a terminal with "Run as administrator" and paste the same line again.'
+        Write-Host ''
+    } elseif ($elevated.ExitCode -ne 0) {
+        Write-Host ''
+        Write-Host 'The uninstall did not finish. The window it opened says why.' -ForegroundColor Red
+        Write-Host ''
+    }
+
+    # Deliberately not `exit`: piped through iex that would close the terminal
+    # the line was pasted into.
+    return
 }
 
 try {
@@ -180,6 +195,7 @@ try {
 if ($Relaunched) {
     Write-Host 'Press Enter to close this window.'
     try { Read-Host | Out-Null } catch { }
+    exit $exitCode
 }
 
-exit $exitCode
+if ($exitCode -ne 0) { throw 'comp-lock was not removed.' }
