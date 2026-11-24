@@ -19,29 +19,61 @@ you can do with an Image File Execution Options redirect. The redirect was left
 out on purpose: a bad value there can leave a program unlaunchable long after
 the lock ends, and a sweep that runs every two seconds repairs itself.
 
-## Requirements
-
-Windows 10 or 11, Python 3.11 or newer, and administrator rights. There are no
-third-party dependencies.
-
 ## Installing
 
-From an elevated prompt, so that the scheduled task below can find the package:
+Open a terminal and paste one line:
+
+```powershell
+irm https://raw.githubusercontent.com/opxie1/comp-lock/main/install.ps1 | iex
+```
+
+Windows asks whether to let it change your device. Say yes. comp-lock rewrites
+the hosts file, and that needs administrator rights, so the installer asks for
+them up front rather than failing later.
+
+It finds Python 3.11 or newer, installing it through winget if the machine has
+none, then puts comp-lock in its own virtual environment under
+`C:\Program Files\comp-lock`, adds a `complock` command to PATH, writes the
+default configuration to `C:\ProgramData\comp-lock\config.toml`, and registers
+the scheduled task described below. Open a new terminal afterwards so the PATH
+change takes effect.
+
+Removing it works the same way. Any lock still running is released first:
+
+```powershell
+irm https://raw.githubusercontent.com/opxie1/comp-lock/main/uninstall.ps1 | iex
+```
+
+To pass options, download the script first instead of piping it:
+
+```powershell
+irm https://raw.githubusercontent.com/opxie1/comp-lock/main/install.ps1 -OutFile install.ps1; .\install.ps1 -NoTask
+```
+
+`install.ps1` takes `-InstallDir`, `-Ref`, `-NoTask`, and `-Force`.
+`uninstall.ps1` takes `-Purge` to delete the configuration and logs as well,
+and `-Force` to end a hard lock that would otherwise block the uninstall.
+
+### From source
 
 ```powershell
 python -m pip install .
-```
-
-Then write the configuration file:
-
-```powershell
 complock init
+.\scripts\install-task.ps1
 ```
 
-That puts a commented `config.toml` in `C:\ProgramData\comp-lock\`, next to the
-lock record and the log.
+Run that from an elevated prompt, and install machine-wide rather than with
+`--user`, or the scheduled task will not be able to import the package.
+
+## Requirements
+
+Windows 10 or 11. Python 3.11 or newer, which the installer will fetch if you
+do not have it. There are no third-party dependencies.
 
 ## Using it
+
+`start` and `stop` change the hosts file, so run them from a terminal started
+with "Run as administrator". `status`, `profiles` and `doctor` do not need it.
 
 Start a lock and get your prompt back:
 
@@ -101,17 +133,15 @@ the rest of your tabs with it, and the hosts file already covers the sites.
 
 ## Surviving a reboot
 
-On its own, a lock ends if the machine restarts or the watchdog is killed. The
-scheduled task fixes that:
+On its own, a lock would end if the machine restarted or the watchdog were
+killed. A scheduled task, which the installer registers for you, runs
+`complock resume` at startup and once a minute afterwards. `resume` starts a
+new watchdog if a lock still has time left, and releases the block if the
+deadline passed while nothing was watching.
 
-```powershell
-.\scripts\install-task.ps1
-```
-
-It registers a task that runs `complock resume` at startup and once a minute
-afterwards. `resume` restarts the watchdog if a lock still has time left, and
-releases the block if the deadline passed while nothing was watching. Remove it
-with `.\scripts\uninstall-task.ps1`.
+Add or remove it by hand with `.\scripts\install-task.ps1` and
+`.\scripts\uninstall-task.ps1`, or skip it at install time with `-NoTask`.
+`complock doctor` reports whether it is registered.
 
 ## Hard locks
 
