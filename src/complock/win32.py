@@ -21,13 +21,25 @@ _log = logging.getLogger(__name__)
 
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+_ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
 
 TH32CS_SNAPPROCESS = 0x0002
 PROCESS_TERMINATE = 0x0001
+PROCESS_VM_READ = 0x0010
+PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 STILL_ACTIVE = 259
 _INVALID_HANDLE = ctypes.c_void_p(-1).value
 _MAX_PATH = 260
+
+# Offsets into the process environment block, 64-bit layout. There is no
+# documented call that returns another process's command line, and the
+# alternatives (WMI, or spawning a shell) are far too slow to run on every
+# sweep. These are the published x64 offsets and have been stable across
+# Windows 10 and 11.
+_PEB_PROCESS_PARAMETERS = 0x20
+_PARAMETERS_COMMAND_LINE = 0x70
+_MAX_COMMAND_LINE_BYTES = 0x8000
 
 
 class _ProcessEntry(ctypes.Structure):
@@ -59,6 +71,39 @@ _kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintype
 _kernel32.GetExitCodeProcess.restype = wintypes.BOOL
 _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 _kernel32.CloseHandle.restype = wintypes.BOOL
+_kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)
+]
+_kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+_kernel32.ReadProcessMemory.argtypes = [
+    wintypes.HANDLE, wintypes.LPCVOID, wintypes.LPVOID, ctypes.c_size_t,
+    ctypes.POINTER(ctypes.c_size_t),
+]
+_kernel32.ReadProcessMemory.restype = wintypes.BOOL
+_ntdll.NtQueryInformationProcess.argtypes = [
+    wintypes.HANDLE, ctypes.c_ulong, wintypes.LPVOID, ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_ulong),
+]
+_ntdll.NtQueryInformationProcess.restype = ctypes.c_long
+
+
+class _ProcessBasicInformation(ctypes.Structure):
+    _fields_ = [
+        ("ExitStatus", ctypes.c_long),
+        ("PebBaseAddress", ctypes.c_void_p),
+        ("AffinityMask", ctypes.c_size_t),
+        ("BasePriority", ctypes.c_long),
+        ("UniqueProcessId", ctypes.c_size_t),
+        ("InheritedFromUniqueProcessId", ctypes.c_size_t),
+    ]
+
+
+class _UnicodeString(ctypes.Structure):
+    _fields_ = [
+        ("Length", ctypes.c_ushort),
+        ("MaximumLength", ctypes.c_ushort),
+        ("Buffer", ctypes.c_void_p),
+    ]
 
 
 def is_admin() -> bool:
@@ -130,6 +175,78 @@ def is_running(pid: int, expect_name: str | None = None) -> bool:
         return True
     actual = process_name(pid)
     return actual is not None and actual.casefold() == expect_name.casefold()
+
+
+def process_image_path(pid: int) -> str | None:
+    """The full path of a process's executable, or None if it cannot be read."""
+    handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not _kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return None
+        return buffer.value or None
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def _read_memory(handle: int, address: int, into: ctypes.Structure | ctypes.Array) -> bool:
+    copied = ctypes.c_size_t(0)
+    wanted = ctypes.sizeof(into)
+    ok = _kernel32.ReadProcessMemory(
+        handle, ctypes.c_void_p(address), ctypes.byref(into), wanted, ctypes.byref(copied)
+    )
+    return bool(ok) and copied.value == wanted
+
+
+def process_command_line(pid: int) -> str | None:
+    """The command line of another process, or None if it cannot be read.
+
+    Read out of the process environment block, which is the only way to get
+    this cheaply enough to do on every sweep. Treat it as best effort: a caller
+    that gets None has learned nothing about the process and must not act as
+    though a match had been ruled in or out.
+    """
+    if ctypes.sizeof(ctypes.c_void_p) != 8:
+        # The offsets above are the 64-bit layout only.
+        return None
+
+    handle = _kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid)
+    if not handle:
+        return None
+    try:
+        info = _ProcessBasicInformation()
+        status = _ntdll.NtQueryInformationProcess(
+            handle, 0, ctypes.byref(info), ctypes.sizeof(info), None
+        )
+        if status != 0 or not info.PebBaseAddress:
+            return None
+
+        parameters = ctypes.c_void_p()
+        if not _read_memory(handle, info.PebBaseAddress + _PEB_PROCESS_PARAMETERS, parameters):
+            return None
+        if not parameters.value:
+            return None
+
+        located = _UnicodeString()
+        if not _read_memory(handle, parameters.value + _PARAMETERS_COMMAND_LINE, located):
+            return None
+        if not located.Buffer or not located.Length:
+            return None
+        if located.Length > _MAX_COMMAND_LINE_BYTES or located.Length % 2:
+            # Not a plausible UTF-16 string; the layout is not what we expect.
+            return None
+
+        raw = (ctypes.c_char * located.Length)()
+        if not _read_memory(handle, located.Buffer, raw):
+            return None
+        return bytes(raw).decode("utf-16-le", errors="replace")
+    except OSError:
+        return None
+    finally:
+        _kernel32.CloseHandle(handle)
 
 
 def flush_dns_cache() -> bool:

@@ -104,7 +104,7 @@ class Watchdog:
         if self.config.flush_dns:
             win32.flush_dns_cache()
 
-        closed = apps.sweep(self.profile.processes)
+        closed = apps.sweep(self.profile.processes, self.config.command_line)
 
         # Recorded last, so the record never claims a lock that is not actually
         # in place. `complock start` waits on this file to know the worker is up.
@@ -129,7 +129,7 @@ class Watchdog:
             if remaining <= 0:
                 return
             self._repair_hosts()
-            apps.sweep(self.profile.processes)
+            apps.sweep(self.profile.processes, self.config.command_line)
             time.sleep(min(self.config.poll_interval, remaining))
 
     def _repair_hosts(self) -> None:

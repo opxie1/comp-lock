@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from importlib import resources
 
-from .config import Profile
+from .config import Profile, executable_name
 from .errors import ProfileError
 
 # A hostname: dot-separated labels, no leading or trailing hyphen, at least one
@@ -16,7 +16,7 @@ _HOSTNAME = re.compile(
     r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
     r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
 )
-_BLOCKLIST_NAMES = ("social", "video", "news", "games", "shopping")
+_BLOCKLIST_NAMES = ("social", "video", "news", "games", "shopping", "minecraft")
 
 
 @dataclass(frozen=True)
@@ -76,14 +76,11 @@ def _expand(host: str, where: str) -> tuple[str, ...]:
 
 def _normalise_process(name: str, profile_name: str) -> str:
     """Accept either 'Steam' or 'Steam.exe' and store one canonical form."""
-    name = name.strip().casefold()
     if "/" in name or "\\" in name:
         raise ProfileError(
-            f"profile {profile_name!r} lists {name!r}; give the executable name only, "
-            "not a path, because comp-lock matches on the file name"
+            f"profile {profile_name!r} lists {name.strip().casefold()!r}; give the "
+            "executable name only, not a path, because comp-lock matches on the file name"
         )
-    if not name:
+    if not name.strip():
         raise ProfileError(f"profile {profile_name!r} lists an empty process name")
-    if "." not in name:
-        name += ".exe"
-    return name
+    return executable_name(name)

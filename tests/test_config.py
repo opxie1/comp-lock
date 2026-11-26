@@ -15,9 +15,12 @@ def write(tmp_path, body):
     return path
 
 
+DEFAULT_PROFILES = {"minecraft", "social", "media", "deep"}
+
+
 def test_packaged_default_loads(sandbox):
     loaded = config.load()
-    assert {"social", "media", "deep"} <= set(loaded.profiles)
+    assert DEFAULT_PROFILES <= set(loaded.profiles)
     assert config.MIN_POLL_INTERVAL <= loaded.poll_interval <= config.MAX_POLL_INTERVAL
 
 
@@ -27,7 +30,47 @@ def test_default_text_is_what_init_writes(sandbox):
     text = config.default_text()
     path = sandbox / "copied.toml"
     path.write_text(text, encoding="utf-8")
-    assert set(config.load(path).profiles) == {"social", "media", "deep"}
+    assert set(config.load(path).profiles) == DEFAULT_PROFILES
+
+
+def test_default_guards_java_so_it_is_not_killed_blindly(sandbox):
+    # Every default profile lists javaw, so the guard has to be there or a lock
+    # would close unrelated Java programs.
+    loaded = config.load()
+    for profile in loaded.profiles.values():
+        if "javaw" in profile.processes:
+            assert "javaw.exe" in loaded.command_line, profile.name
+    assert "minecraft" in loaded.command_line["javaw.exe"]
+
+
+class TestCommandLine:
+    def test_absent_table_is_empty(self, tmp_path):
+        assert config.load(write(tmp_path, MINIMAL)).command_line == {}
+
+    def test_names_gain_an_exe_extension(self, tmp_path):
+        body = MINIMAL + '\n[command_line]\njavaw = ["minecraft"]\n'
+        assert config.load(write(tmp_path, body)).command_line == {"javaw.exe": ("minecraft",)}
+
+    def test_names_are_lowercased(self, tmp_path):
+        body = MINIMAL + '\n[command_line]\n"JavaW.EXE" = ["Minecraft"]\n'
+        parsed = config.load(write(tmp_path, body)).command_line
+        assert set(parsed) == {"javaw.exe"}
+
+    def test_an_entry_with_no_fragments_is_rejected(self, tmp_path):
+        body = MINIMAL + "\n[command_line]\njavaw = []\n"
+        with pytest.raises(ConfigError, match="never match"):
+            config.load(write(tmp_path, body))
+
+    def test_fragments_must_be_strings(self, tmp_path):
+        body = MINIMAL + "\n[command_line]\njavaw = [3]\n"
+        with pytest.raises(ConfigError, match="not a name"):
+            config.load(write(tmp_path, body))
+
+    def test_table_must_be_a_table(self, tmp_path):
+        # Ahead of the profile table: a bare key after one would belong to it.
+        body = 'command_line = "javaw"\n' + MINIMAL
+        with pytest.raises(ConfigError, match="table of executable names"):
+            config.load(write(tmp_path, body))
 
 
 def test_missing_file_falls_back_to_the_default(tmp_path):

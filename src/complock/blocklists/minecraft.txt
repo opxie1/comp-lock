@@ -1,0 +1,56 @@
+# Minecraft: the game, the accounts it needs, the launchers, and the mod and
+# server sites that feed it.
+#
+# minecraftservices.com and sessionserver.mojang.com carry authentication. With
+# those gone the game cannot sign in, which stops it whichever launcher started
+# it. The rest keeps the surrounding ecosystem out of reach.
+
+# Account and session services
+minecraftservices.com
+api.minecraftservices.com
+sessionserver.mojang.com
+authserver.mojang.com
+api.mojang.com
+mojang.com
+
+# Game files and launcher metadata
+minecraft.net
+launcher.mojang.com
+launchermeta.mojang.com
+piston-meta.mojang.com
+piston-data.mojang.com
+libraries.minecraft.net
+resources.download.minecraft.net
+assets.mojang.com
+
+# Third-party launchers
+prismlauncher.org
+multimc.org
+atlauncher.com
+technicpack.net
+gdlauncher.com
+tlauncher.org
+labymod.net
+lunarclient.com
+badlion.net
+
+# Mods, packs and tooling
+curseforge.com
+forgecdn.net
+modrinth.com
+minecraftforge.net
+fabricmc.net
+optifine.net
+spigotmc.org
+papermc.io
+mcversions.net
+
+# Servers, listings and the wider time sink
+hypixel.net
+aternos.org
+minehut.com
+planetminecraft.com
+mcpedl.com
+namemc.com
+minecraft-server-list.com
+minecraftservers.org

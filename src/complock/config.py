@@ -22,12 +22,28 @@ _TOP_LEVEL = {
     "allow_early_stop",
     "flush_dns",
     "disable_browser_doh",
+    "command_line",
     "profiles",
 }
 _PROFILE_KEYS = {"domains", "processes"}
 
 MIN_POLL_INTERVAL = 0.5
 MAX_POLL_INTERVAL = 60.0
+
+EXECUTABLE_SUFFIXES = (".exe", ".com", ".bat", ".cmd", ".scr", ".pif")
+
+
+def executable_name(name: str) -> str:
+    """Normalise an executable name for matching.
+
+    Decided by the suffix rather than by looking for a dot anywhere in the
+    name: Minecraft.Windows contains a dot and still needs .exe, and reading it
+    as already-qualified silently produces a name that matches nothing.
+    """
+    cleaned = name.strip().casefold()
+    if cleaned and not cleaned.endswith(EXECUTABLE_SUFFIXES):
+        cleaned += ".exe"
+    return cleaned
 
 
 @dataclass(frozen=True)
@@ -43,6 +59,7 @@ class Config:
     allow_early_stop: bool
     flush_dns: bool
     disable_browser_doh: bool
+    command_line: Mapping[str, tuple[str, ...]]
     profiles: Mapping[str, Profile]
     source: Path | None
 
@@ -96,9 +113,30 @@ def _build(raw: Mapping[str, Any], source: Path | None) -> Config:
         allow_early_stop=_flag(raw, "allow_early_stop", True),
         flush_dns=_flag(raw, "flush_dns", True),
         disable_browser_doh=_flag(raw, "disable_browser_doh", True),
+        command_line=_command_line(raw.get("command_line", {})),
         profiles=profiles,
         source=source,
     )
+
+
+def _command_line(body: Any) -> Mapping[str, tuple[str, ...]]:
+    """Parse the table of executables that are only closed on a match."""
+    if not isinstance(body, Mapping):
+        raise ConfigError("command_line must be a table of executable names")
+    parsed: dict[str, tuple[str, ...]] = {}
+    for exe, fragments in body.items():
+        where = f"command_line entry {exe!r}"
+        name = executable_name(exe)
+        if not name:
+            raise ConfigError("command_line has an entry with no executable name")
+        values = _string_list({"fragments": fragments}, "fragments", where)
+        if not values:
+            raise ConfigError(
+                f"{where} lists no fragments; an entry with none would never match, "
+                "so remove the entry instead"
+            )
+        parsed[name] = values
+    return parsed
 
 
 def _profile(name: str, body: Any) -> Profile:

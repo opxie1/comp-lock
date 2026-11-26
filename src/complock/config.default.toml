@@ -22,22 +22,82 @@ flush_dns = true
 # browser that is already open has to be restarted for it to take effect.
 disable_browser_doh = true
 
+# Executables that host more than one program.
+#
+# javaw.exe is every Java application on the machine, not just Minecraft, so
+# closing it on sight would take unrelated work down with the game. An
+# executable listed here is closed only when its command line or its own path
+# contains one of these fragments, matched without regard to case. A process
+# whose command line cannot be read is left alone rather than guessed at.
+#
+# This is why Minecraft Java Edition is actually blocked: the launcher is one
+# process, but the game itself is javaw.exe, and a third-party launcher such as
+# Prism or MultiMC never starts the official launcher at all.
+[command_line]
+"javaw.exe" = ["minecraft", "prismlauncher", "multimc", "modrinth", "atlauncher"]
+"java.exe" = ["minecraft", "prismlauncher", "multimc", "modrinth", "atlauncher"]
+
 # Profiles decide what a lock covers.
 #
 #   domains    hostnames, or @name to pull in a bundled list. The lists are
-#              social, video, news, games and shopping.
+#              social, video, news, games, shopping and minecraft.
 #   processes  executable names, matched on the file name without regard to
-#              case. A name with no extension is read as .exe.
+#              case. A name that does not already end in .exe (or .com, .bat,
+#              .cmd) gets .exe added.
 #
 # Browsers are deliberately absent from every processes list: closing one takes
 # the rest of your tabs with it, and the hosts file already covers the sites.
+#
+# Minecraft is in every profile, including the lightest one, because there is
+# no lock in which it is wanted. Use the minecraft profile on its own to block
+# only the game.
+
+[profiles.minecraft]
+domains = ["@minecraft"]
+processes = [
+    "Minecraft",
+    "MinecraftLauncher",
+    "Minecraft.Windows.exe",
+    "PrismLauncher",
+    "MultiMC",
+    "ATLauncher",
+    "GDLauncher",
+    "ModrinthApp",
+    "CurseForge",
+    "TLauncher",
+    "TechnicLauncher",
+    "XMCL",
+    "javaw",
+    "java",
+]
 
 [profiles.social]
-domains = ["@social"]
-processes = ["Instagram", "TikTok", "Snapchat", "Discord", "Telegram", "WhatsApp"]
+domains = ["@social", "@minecraft"]
+processes = [
+    "Instagram",
+    "TikTok",
+    "Snapchat",
+    "Discord",
+    "Telegram",
+    "WhatsApp",
+    "Minecraft",
+    "MinecraftLauncher",
+    "Minecraft.Windows.exe",
+    "PrismLauncher",
+    "MultiMC",
+    "ATLauncher",
+    "GDLauncher",
+    "ModrinthApp",
+    "CurseForge",
+    "TLauncher",
+    "TechnicLauncher",
+    "XMCL",
+    "javaw",
+    "java",
+]
 
 [profiles.media]
-domains = ["@social", "@video"]
+domains = ["@social", "@video", "@minecraft"]
 processes = [
     "Instagram",
     "TikTok",
@@ -46,10 +106,24 @@ processes = [
     "Telegram",
     "WhatsApp",
     "Spotify",
+    "Minecraft",
+    "MinecraftLauncher",
+    "Minecraft.Windows.exe",
+    "PrismLauncher",
+    "MultiMC",
+    "ATLauncher",
+    "GDLauncher",
+    "ModrinthApp",
+    "CurseForge",
+    "TLauncher",
+    "TechnicLauncher",
+    "XMCL",
+    "javaw",
+    "java",
 ]
 
 [profiles.deep]
-domains = ["@social", "@video", "@news", "@games", "@shopping"]
+domains = ["@social", "@video", "@news", "@games", "@shopping", "@minecraft"]
 processes = [
     "Instagram",
     "TikTok",
@@ -61,4 +135,18 @@ processes = [
     "Steam",
     "EpicGamesLauncher",
     "RobloxPlayerBeta",
+    "Minecraft",
+    "MinecraftLauncher",
+    "Minecraft.Windows.exe",
+    "PrismLauncher",
+    "MultiMC",
+    "ATLauncher",
+    "GDLauncher",
+    "ModrinthApp",
+    "CurseForge",
+    "TLauncher",
+    "TechnicLauncher",
+    "XMCL",
+    "javaw",
+    "java",
 ]

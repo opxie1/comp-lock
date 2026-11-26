@@ -65,6 +65,15 @@ irm https://raw.githubusercontent.com/opxie1/comp-lock/main/install.ps1 -OutFile
 `uninstall.ps1` takes `-Purge` to delete the configuration and logs as well,
 and `-Force` to end a hard lock that would otherwise block the uninstall.
 
+Re-running the installer upgrades the code but leaves `config.toml` alone, so
+that it never discards settings you have edited. That also means new bundled
+profiles do not appear on their own. To take the current defaults, overwriting
+whatever is there:
+
+```powershell
+complock init --force
+```
+
 ### From source
 
 ```powershell
@@ -124,8 +133,9 @@ a file already present), and 2 for an error.
 
 ## Profiles
 
-A profile names what a lock covers. Three come with the tool: `social`,
-`media`, and `deep`. Edit `config.toml` to change them or add your own.
+A profile names what a lock covers. Four come with the tool: `minecraft`,
+`social`, `media`, and `deep`. Edit `config.toml` to change them or add your
+own.
 
 ```toml
 [profiles.evening]
@@ -134,13 +144,41 @@ processes = ["Discord", "Steam"]
 ```
 
 `domains` takes hostnames, or `@name` to pull in one of the bundled lists:
-`social`, `video`, `news`, `games`, and `shopping`. Every hostname also gets a
-`www.` alias, so there is no need to write both. `processes` takes executable
-names matched on the file name without regard to case, and a name with no
-extension is read as `.exe`.
+`social`, `video`, `news`, `games`, `shopping`, and `minecraft`. Every hostname
+also gets a `www.` alias, so there is no need to write both. `processes` takes
+executable names matched on the file name without regard to case, and a name
+that does not already end in an executable extension gets `.exe` added.
 
 Browsers are deliberately absent from every `processes` list. Closing one takes
 the rest of your tabs with it, and the hosts file already covers the sites.
+
+## Executables that host more than one program
+
+Some executables are not one application. `javaw.exe` is every Java program on
+the machine, so closing it on sight would take unrelated work down alongside
+the game you meant to block. An executable listed in the `command_line` table
+is closed only when its command line, or its own path, contains one of the
+fragments given for it:
+
+```toml
+[command_line]
+"javaw.exe" = ["minecraft", "prismlauncher", "multimc", "modrinth", "atlauncher"]
+```
+
+A process whose command line cannot be read is left running rather than guessed
+at, so the failure goes in the harmless direction. `complock profiles` lists
+these separately from the rest, since "22 applications" would otherwise imply
+that every Java program is fair game.
+
+This is what makes blocking Minecraft Java Edition actually work. The launcher
+is one process, but the game itself is `javaw.exe`, and a third-party launcher
+such as Prism or MultiMC never starts the official launcher at all. The
+`minecraft` blocklist also covers `minecraftservices.com` and
+`sessionserver.mojang.com`, which carry authentication: with those unreachable
+the game cannot sign in, whichever launcher started it.
+
+Minecraft is in every bundled profile, including the lightest one, rather than
+only in `deep`. Use the `minecraft` profile on its own to block just the game.
 
 ## Surviving a reboot
 

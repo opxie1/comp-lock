@@ -86,6 +86,19 @@ def test_process_names_with_an_extension_are_left_alone():
     assert resolved.processes == ("robloxplayerbeta.exe",)
 
 
+def test_a_dotted_name_still_gains_exe():
+    # Bedrock Edition is Minecraft.Windows.exe. Treating any dot as "already
+    # has an extension" produced minecraft.windows, which matches nothing.
+    resolved = profiles.resolve(make(processes=["Minecraft.Windows"]))
+    assert resolved.processes == ("minecraft.windows.exe",)
+
+
+@pytest.mark.parametrize("name", ["Steam.exe", "thing.cmd", "thing.bat", "thing.com"])
+def test_known_executable_suffixes_are_not_doubled(name):
+    resolved = profiles.resolve(make(processes=[name]))
+    assert resolved.processes == (name.casefold(),)
+
+
 def test_the_two_spellings_of_a_process_collapse_to_one():
     resolved = profiles.resolve(make(processes=["Steam", "steam.exe"]))
     assert resolved.processes == ("steam.exe",)

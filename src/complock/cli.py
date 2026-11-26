@@ -119,9 +119,16 @@ def cmd_profiles(args: argparse.Namespace) -> int:
         resolved = profiles.resolve(config.profiles[name])
         print(f"\n  {name}")
         print(f"    {len(resolved.hostnames)} hostnames from {_sources(config.profiles[name])}")
-        if resolved.processes:
-            print(f"    {len(resolved.processes)} applications: {', '.join(resolved.processes)}")
-        else:
+
+        # Kept apart so the listing does not imply that javaw.exe is closed on
+        # sight, which would mean every Java program on the machine.
+        plain = [p for p in resolved.processes if p not in config.command_line]
+        guarded = [p for p in resolved.processes if p in config.command_line]
+        if plain:
+            print(f"    {len(plain)} applications: {', '.join(plain)}")
+        if guarded:
+            print(f"    {len(guarded)} only on a command-line match: {', '.join(guarded)}")
+        if not resolved.processes:
             print("    no applications")
     return 0
 
