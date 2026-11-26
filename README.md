@@ -31,12 +31,23 @@ Windows asks whether to let it change your device. Say yes. comp-lock rewrites
 the hosts file, and that needs administrator rights, so the installer asks for
 them up front rather than failing later.
 
-It finds Python 3.11 or newer, installing it through winget if the machine has
-none, then puts comp-lock in its own virtual environment under
+It finds Python 3.11 or newer, installing it from winget or python.org if the
+machine has none, then puts comp-lock in its own virtual environment under
 `C:\Program Files\comp-lock`, adds a `complock` command to PATH, writes the
 default configuration to `C:\ProgramData\comp-lock\config.toml`, and registers
 the scheduled task described below. Open a new terminal afterwards so the PATH
 change takes effect.
+
+Python is located before the installer elevates, and the path is handed to the
+elevated half. That is not fussiness: `python` on PATH is usually an execution
+alias under `WindowsApps` that only resolves for the user who owns it, a
+per-user Python is registered in that user's registry hive and nowhere else,
+and `winget` is an alias too. An elevated process that looks for any of them
+the ordinary way can easily find nothing on a machine that plainly has Python.
+
+If the only Python on the machine is installed for one user, the scheduled task
+runs as SYSTEM and may not be able to reach it. The installer runs the task once
+to check, and says so if that is the case.
 
 Removing it works the same way. Any lock still running is released first:
 

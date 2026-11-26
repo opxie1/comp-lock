@@ -34,6 +34,7 @@ first.
 param(
     [string]$InstallDir = (Join-Path $env:ProgramFiles 'comp-lock'),
     [string]$Ref = 'main',
+    [string]$PythonPath,
     [switch]$NoTask,
     [switch]$Force,
     [switch]$Relaunched
@@ -50,6 +51,10 @@ $Repo = 'opxie1/comp-lock'
 $InstallerUrl = "https://raw.githubusercontent.com/$Repo/$Ref/install.ps1"
 $MinPython = [Version]'3.11'
 
+# Used only when the machine has no usable Python. Pinned rather than resolved
+# at run time because python.org publishes no stable "latest" endpoint.
+$PythonFallbackVersion = '3.13.7'
+
 function Write-Step($Message) {
     Write-Host "==> $Message" -ForegroundColor Cyan
 }
@@ -64,66 +69,155 @@ function Test-Admin {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Get-PythonVersion($Exe) {
-    # The `python` on PATH may be the Microsoft Store stub, which does not run
-    # code, so ask the interpreter itself rather than trusting the file.
+function Update-ProcessPath {
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = (@($machine, $user) | Where-Object { $_ }) -join ';'
+}
+
+function Resolve-Interpreter($Candidate) {
+    <#
+    Asks a candidate interpreter where it really lives and what version it is.
+
+    Going through sys.executable matters: `python` on PATH is usually an
+    execution alias in WindowsApps, and that alias only resolves for the user
+    who owns it. Recording the real path instead means the interpreter is still
+    reachable after the installer elevates.
+    #>
+    if (-not $Candidate) { return $null }
+
+    # Scoped to this function. A native command writing to stderr is not a
+    # reason to abandon the install, which is what 'Stop' would make it.
+    $ErrorActionPreference = 'Continue'
+
+    # Deliberately free of quote characters. Windows PowerShell does not escape
+    # embedded quotes when it builds the command line for a native program, so
+    # a probe containing them reaches Python already mangled. One value per
+    # line also keeps a path with spaces in it unambiguous.
+    $probe = 'import sys; print(sys.executable); print(sys.version_info[0]); print(sys.version_info[1])'
     try {
-        $output = & $Exe -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+        $raw = & $Candidate '-c' $probe
     } catch {
         return $null
     }
-    if ($LASTEXITCODE -ne 0 -or -not $output) { return $null }
+
+    $lines = @($raw | Where-Object { $_ -ne $null } | ForEach-Object { [string]$_ })
+    if ($lines.Count -lt 3) { return $null }
+
+    $exe = $lines[0].Trim()
+    if (-not $exe -or -not (Test-Path -LiteralPath $exe)) { return $null }
     try {
-        return [Version]($output | Select-Object -First 1).Trim()
+        $version = [Version]("$($lines[1].Trim()).$($lines[2].Trim())")
     } catch {
         return $null
     }
+
+    # An execution alias is a zero-length reparse point, so it is no use to an
+    # elevated process or to the scheduled task.
+    if ((Get-Item -LiteralPath $exe).Length -eq 0) { return $null }
+
+    return [pscustomobject]@{ Path = $exe; Version = $version }
+}
+
+function Get-PythonCandidates {
+    $found = New-Object 'System.Collections.Generic.List[string]'
+
+    # The registry first. Unlike PATH it is readable once elevated, and a
+    # per-user install records itself under HKCU and nowhere else.
+    foreach ($root in @(
+        'HKCU:\SOFTWARE\Python\PythonCore',
+        'HKLM:\SOFTWARE\Python\PythonCore',
+        'HKLM:\SOFTWARE\WOW6432Node\Python\PythonCore'
+    )) {
+        if (-not (Test-Path $root)) { continue }
+        foreach ($key in (Get-ChildItem $root -ErrorAction SilentlyContinue)) {
+            $installKey = Join-Path $key.PSPath 'InstallPath'
+            if (-not (Test-Path $installKey)) { continue }
+            $values = Get-ItemProperty $installKey -ErrorAction SilentlyContinue
+            if ($values.ExecutablePath) {
+                $found.Add([string]$values.ExecutablePath)
+            } elseif ($values.'(default)') {
+                $found.Add((Join-Path ([string]$values.'(default)') 'python.exe'))
+            }
+        }
+    }
+
+    foreach ($pattern in @(
+        "$env:LocalAppData\Programs\Python\Python3*\python.exe",
+        "$env:LocalAppData\Python\pythoncore-3*\python.exe",
+        "$env:ProgramFiles\Python3*\python.exe",
+        "${env:ProgramFiles(x86)}\Python3*\python.exe",
+        'C:\Python3*\python.exe'
+    )) {
+        Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+            ForEach-Object { $found.Add($_.FullName) }
+    }
+
+    foreach ($name in @('py', 'python', 'python3')) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command) { $found.Add($command.Source) }
+    }
+
+    return ($found | Select-Object -Unique)
 }
 
 function Find-Python {
-    $seen = New-Object 'System.Collections.Generic.List[string]'
-
-    $launcher = Get-Command py -ErrorAction SilentlyContinue
-    if ($launcher) {
-        foreach ($tag in @('-3.14', '-3.13', '-3.12', '-3.11', '-3')) {
-            try {
-                $found = & $launcher.Source $tag -c "import sys; print(sys.executable)" 2>$null
-            } catch {
-                continue
-            }
-            if ($LASTEXITCODE -eq 0 -and $found) { $seen.Add($found.Trim()) }
-        }
+    $best = $null
+    foreach ($candidate in (Get-PythonCandidates)) {
+        $resolved = Resolve-Interpreter $candidate
+        if (-not $resolved) { continue }
+        if ($resolved.Version -lt $MinPython) { continue }
+        if (-not $best -or $resolved.Version -gt $best.Version) { $best = $resolved }
     }
-
-    foreach ($name in @('python', 'python3')) {
-        $command = Get-Command $name -ErrorAction SilentlyContinue
-        if ($command) { $seen.Add($command.Source) }
-    }
-
-    foreach ($exe in ($seen | Select-Object -Unique)) {
-        if (-not (Test-Path -LiteralPath $exe)) { continue }
-        $version = Get-PythonVersion $exe
-        if ($version -and $version -ge $MinPython) {
-            return [pscustomobject]@{ Path = $exe; Version = $version }
-        }
-    }
-    return $null
+    return $best
 }
 
 function Install-Python {
+    <#
+    Installs Python for all users.
+
+    winget is tried first because it keeps itself current, but it is itself an
+    execution alias on most machines and so is often missing from an elevated
+    session. The python.org installer is the dependable path and the one that
+    actually runs on a machine with only a per-user Python.
+    #>
     $winget = Get-Command winget -ErrorAction SilentlyContinue
-    if (-not $winget) {
-        throw "comp-lock needs Python $MinPython or newer, and winget is not available to install it. Install Python from https://www.python.org/downloads/windows/ (tick 'Add python.exe to PATH') and run this again."
+    if ($winget) {
+        Write-Detail 'Installing Python through winget. This takes a minute.'
+        $ErrorActionPreference = 'Continue'
+        & $winget.Source install --id Python.Python.3.13 --source winget --scope machine `
+            --accept-source-agreements --accept-package-agreements --silent
+        $wingetExit = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($wingetExit -eq 0) {
+            Update-ProcessPath
+            if (Find-Python) { return }
+        }
+        Write-Detail 'winget did not manage it. Falling back to the python.org installer.'
+    } else {
+        Write-Detail 'winget is not usable here, so using the python.org installer.'
     }
-    Write-Detail 'Installing Python through winget. This takes a minute.'
-    & $winget.Source install --id Python.Python.3.13 --source winget `
-        --accept-source-agreements --accept-package-agreements --silent
-    if ($LASTEXITCODE -ne 0) {
-        throw "winget could not install Python (exit $LASTEXITCODE). Install it from https://www.python.org/downloads/windows/ and run this again."
+
+    $architecture = 'amd64'
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { $architecture = 'arm64' }
+    $file = "python-$PythonFallbackVersion-$architecture.exe"
+    $url = "https://www.python.org/ftp/python/$PythonFallbackVersion/$file"
+    $target = Join-Path $env:TEMP $file
+
+    Write-Detail "Downloading $url"
+    Invoke-WebRequest -Uri $url -OutFile $target -UseBasicParsing
+
+    Write-Detail 'Installing Python for all users. This takes a couple of minutes.'
+    # InstallAllUsers so the scheduled task can reach it as SYSTEM, and
+    # Include_launcher so `py` works afterwards.
+    $installer = Start-Process -FilePath $target -Wait -PassThru -ArgumentList @(
+        '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'Include_launcher=1', 'Include_test=0'
+    )
+    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+    if ($installer.ExitCode -ne 0) {
+        throw "The Python installer stopped with exit code $($installer.ExitCode). Install Python $MinPython or newer from https://www.python.org/downloads/windows/ and run this again."
     }
-    # winget edits the machine PATH, which this process does not see.
-    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
-                [Environment]::GetEnvironmentVariable('Path', 'User')
+    Update-ProcessPath
 }
 
 function Get-ActiveLock {
@@ -171,6 +265,19 @@ if (-not (Test-Admin)) {
     if ($NoTask) { $arguments += '-NoTask' }
     if ($Force) { $arguments += '-Force' }
 
+    # Resolved here rather than after elevating. A per-user Python is recorded
+    # only in this user's registry hive, and `python` on PATH is usually an
+    # execution alias that no elevated process can follow, so the elevated half
+    # can easily find nothing at all on a machine that plainly has Python.
+    if (-not $PythonPath) {
+        $alreadyHave = Find-Python
+        if ($alreadyHave) {
+            Write-Detail "Found Python $($alreadyHave.Version) at $($alreadyHave.Path)"
+            $PythonPath = $alreadyHave.Path
+        }
+    }
+    if ($PythonPath) { $arguments += @('-PythonPath', "`"$PythonPath`"") }
+
     $declined = $false
     try {
         $elevated = Start-Process -FilePath 'powershell.exe' -Verb RunAs `
@@ -217,15 +324,25 @@ try {
     }
 
     Write-Step 'Looking for Python'
-    $python = Find-Python
+    $python = $null
+    if ($PythonPath) {
+        # Handed over by the unelevated half, which could still see the user's
+        # own installs.
+        $python = Resolve-Interpreter $PythonPath
+        if ($python -and $python.Version -lt $MinPython) { $python = $null }
+        if (-not $python) {
+            Write-Detail "The interpreter at $PythonPath is not usable; looking for another."
+        }
+    }
+    if (-not $python) { $python = Find-Python }
     if ($python) {
         Write-Detail "Found Python $($python.Version) at $($python.Path)"
     } else {
-        Write-Detail "No Python $MinPython or newer on this machine."
+        Write-Detail "No Python $MinPython or newer is installed for all users."
         Install-Python
         $python = Find-Python
         if (-not $python) {
-            throw 'Python was installed but cannot be found. Open a new terminal and run this again.'
+            throw 'Python was installed but still cannot be found. Open a new terminal and run this again.'
         }
         Write-Detail "Found Python $($python.Version) at $($python.Path)"
     }

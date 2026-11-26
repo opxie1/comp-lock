@@ -77,4 +77,33 @@ Register-ScheduledTask -TaskName $TaskName `
     -Force | Out-Null
 
 Write-Host "Registered the task '$TaskName'."
-Write-Host "Check it with: schtasks /query /tn `"$TaskName`""
+
+# The probe above ran as the installing user. The task runs as SYSTEM, which is
+# a different thing entirely: a virtual environment built on a per-user Python
+# lives under that user's profile, and `resume` is no use if SYSTEM cannot
+# reach it. `complock resume` does nothing when no lock is stored, so running
+# it once here is safe and settles the question.
+Write-Host 'Checking that SYSTEM can run it'
+Start-ScheduledTask -TaskName $TaskName
+
+$result = $null
+foreach ($attempt in 1..20) {
+    Start-Sleep -Milliseconds 500
+    $info = Get-ScheduledTaskInfo -TaskName $TaskName
+    $state = (Get-ScheduledTask -TaskName $TaskName).State
+    if ($state -ne 'Running' -and $info.LastRunTime) {
+        $result = $info.LastTaskResult
+        break
+    }
+}
+
+if ($null -eq $result) {
+    Write-Warning "The task did not finish in time to be checked. Inspect it with: schtasks /query /tn `"$TaskName`" /v /fo list"
+} elseif ($result -eq 0) {
+    Write-Host '  SYSTEM ran it successfully.'
+} else {
+    Write-Warning "SYSTEM could not run the task (result 0x$('{0:X}' -f $result))."
+    Write-Warning "A lock will still work, but it will not survive a reboot. $Python is most likely somewhere SYSTEM cannot read, which happens when Python is installed for one user only. Installing Python for all users and reinstalling comp-lock fixes it."
+}
+
+Write-Host "Check it any time with: schtasks /query /tn `"$TaskName`""
