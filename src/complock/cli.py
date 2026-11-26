@@ -20,6 +20,9 @@ _DETACHED_PROCESS = 0x00000008
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _CREATE_NO_WINDOW = 0x08000000
 
+# Must match the name scripts/install-task.ps1 registers.
+TASK_NAME = "comp-lock resume"
+
 _log = logging.getLogger("complock")
 
 
@@ -332,14 +335,29 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def _scheduled_task_finding() -> tuple[str, str, str]:
     try:
         result = subprocess.run(
-            ["schtasks", "/query", "/tn", "comp-lock resume"],
+            ["schtasks", "/query", "/tn", TASK_NAME],
             capture_output=True,
+            text=True,
+            errors="replace",
             creationflags=_CREATE_NO_WINDOW,
         )
     except OSError as exc:
         return ("warn", "reboot task", f"could not query the task scheduler: {exc}")
+
     if result.returncode == 0:
         return ("ok", "reboot task", "registered")
+
+    # schtasks exits 1 whether the task is missing or merely unreadable, and a
+    # task that runs as SYSTEM is not readable by an ordinary user. Reporting
+    # that as "not registered" told people their reboot persistence was broken
+    # while it was in fact working, so the two cases are kept apart.
+    output = ((result.stdout or "") + (result.stderr or "")).casefold()
+    if "access is denied" in output:
+        return (
+            "warn",
+            "reboot task",
+            "needs administrator rights to check, so this says nothing either way",
+        )
     return ("warn", "reboot task", "not registered; a lock will not survive a reboot")
 
 
@@ -402,7 +420,16 @@ def _await_session(store: SessionStore, timeout: float) -> Session | None:
 def _configure_logging(args: argparse.Namespace) -> None:
     root = logging.getLogger("complock")
     root.setLevel(logging.DEBUG)
-    root.handlers.clear()
+
+    # Closed rather than just dropped: a discarded handler keeps the log file
+    # open until it is collected, which on Windows is enough to block the
+    # rotation of that same file.
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+        try:
+            handler.close()
+        except OSError:
+            pass
 
     formatter = logging.Formatter(
         "%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
